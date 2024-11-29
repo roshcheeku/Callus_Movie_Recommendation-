@@ -5,12 +5,25 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.neighbors import NearestNeighbors
 import numpy as np
 import joblib
+import zipfile
+import os
 
 # Neo4j database connection details
 uri = "bolt://localhost:7687"
 username = "neo4j"
 password = "ROSH15VEDA"
 driver = GraphDatabase.driver(uri, auth=(username, password))
+
+# Extract the kNN model from the zip file
+MODEL_ZIP_PATH = "knn_movie_recommender.pkl.zip"
+MODEL_FILE_PATH = "knn_movie_recommender.pkl"
+
+if not os.path.exists(MODEL_FILE_PATH):
+    with zipfile.ZipFile(MODEL_ZIP_PATH, 'r') as zip_ref:
+        zip_ref.extractall()  # Extracts in the current directory
+
+# Load the pre-trained kNN model
+knn = joblib.load(MODEL_FILE_PATH)
 
 # Function to fetch movie data from Neo4j
 def fetch_movie_data():
@@ -65,27 +78,15 @@ if "actors_x" in merged_data.columns or "actors_y" in merged_data.columns:
 # Normalize movie names to lowercase in the merged dataset
 merged_data['movie'] = merged_data['movie'].str.lower()
 
-# Vectorize the genres, directors, and actors columns
-vectorizer = CountVectorizer(tokenizer=lambda x: x.split(','))
-
-# Vectorize the features
-genre_features = vectorizer.fit_transform(merged_data['genres'].fillna(""))
-director_features = vectorizer.fit_transform(merged_data['directors'].fillna(""))
-actor_features = vectorizer.fit_transform(merged_data['actors'].fillna(""))
-
 # Combine features into a single matrix
-combined_features = np.hstack([
-    genre_features.toarray(),
-    director_features.toarray(),
-    actor_features.toarray()
-])
+def combine_features(data):
+    vectorizer = CountVectorizer(tokenizer=lambda x: x.split(','))
+    genre_features = vectorizer.fit_transform(data['genres'].fillna(""))
+    director_features = vectorizer.fit_transform(data['directors'].fillna(""))
+    actor_features = vectorizer.fit_transform(data['actors'].fillna(""))
+    return np.hstack([genre_features.toarray(), director_features.toarray(), actor_features.toarray()])
 
-# Train a kNN model for recommendations
-knn = NearestNeighbors(n_neighbors=5, metric='cosine')
-knn.fit(combined_features)
-
-# Save the trained kNN model
-joblib.dump(knn, "knn_movie_recommender.pkl")
+combined_features = combine_features(merged_data)
 
 # Function to recommend movies
 def recommend_movies(movie_name):
