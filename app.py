@@ -5,6 +5,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.neighbors import NearestNeighbors
 import numpy as np
 import joblib
+import requests
 import zipfile
 import os
 
@@ -14,13 +15,33 @@ username = "neo4j"
 password = "ROSH15VEDA"
 driver = GraphDatabase.driver(uri, auth=(username, password))
 
-# Extract the kNN model from the zip file
-MODEL_ZIP_PATH = "knn_movie_recommender.pkl.zip"
+# GitHub URL for the knn_movie_recommender.zip model
+MODEL_ZIP_URL = "https://github.com/roshcheeku/Callus_Movie_Recommendation-/raw/main/knn_movie_recommender.zip"
+MODEL_ZIP_PATH = "knn_movie_recommender.zip"
 MODEL_FILE_PATH = "knn_movie_recommender.pkl"
 
-if not os.path.exists(MODEL_FILE_PATH):
-    with zipfile.ZipFile(MODEL_ZIP_PATH, 'r') as zip_ref:
-        zip_ref.extractall()  # Extracts in the current directory
+# Function to download and extract the model from GitHub
+def download_and_extract_model():
+    # Download the ZIP file from GitHub
+    if not os.path.exists(MODEL_ZIP_PATH):
+        print("Downloading model ZIP file from GitHub...")
+        response = requests.get(MODEL_ZIP_URL)
+        if response.status_code == 200:
+            with open(MODEL_ZIP_PATH, "wb") as f:
+                f.write(response.content)
+            print(f"Model ZIP file downloaded and saved as {MODEL_ZIP_PATH}")
+        else:
+            raise Exception(f"Failed to download model ZIP file: {response.status_code}")
+    
+    # Extract the model file from the ZIP archive
+    if not os.path.exists(MODEL_FILE_PATH):
+        print("Extracting model file from ZIP...")
+        with zipfile.ZipFile(MODEL_ZIP_PATH, 'r') as zip_ref:
+            zip_ref.extractall()  # Extracts all files into the current directory
+        print(f"Model extracted to {MODEL_FILE_PATH}")
+        
+# Download and extract the model from GitHub
+download_and_extract_model()
 
 # Load the pre-trained kNN model
 knn = joblib.load(MODEL_FILE_PATH)
