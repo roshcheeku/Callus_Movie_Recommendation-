@@ -5,46 +5,12 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.neighbors import NearestNeighbors
 import numpy as np
 import joblib
-import requests
-import zipfile
-import os
 
 # Neo4j database connection details
 uri = "bolt://localhost:7687"
 username = "neo4j"
 password = "ROSH15VEDA"
 driver = GraphDatabase.driver(uri, auth=(username, password))
-
-# GitHub URL for the knn_movie_recommender.zip model
-MODEL_ZIP_URL = "https://github.com/roshcheeku/Callus_Movie_Recommendation-/raw/main/knn_movie_recommender.zip"
-MODEL_ZIP_PATH = "knn_movie_recommender.zip"
-MODEL_FILE_PATH = "knn_movie_recommender.pkl"
-
-# Function to download and extract the model from GitHub
-def download_and_extract_model():
-    # Download the ZIP file from GitHub
-    if not os.path.exists(MODEL_ZIP_PATH):
-        print("Downloading model ZIP file from GitHub...")
-        response = requests.get(MODEL_ZIP_URL)
-        if response.status_code == 200:
-            with open(MODEL_ZIP_PATH, "wb") as f:
-                f.write(response.content)
-            print(f"Model ZIP file downloaded and saved as {MODEL_ZIP_PATH}")
-        else:
-            raise Exception(f"Failed to download model ZIP file: {response.status_code}")
-    
-    # Extract the model file from the ZIP archive
-    if not os.path.exists(MODEL_FILE_PATH):
-        print("Extracting model file from ZIP...")
-        with zipfile.ZipFile(MODEL_ZIP_PATH, 'r') as zip_ref:
-            zip_ref.extractall()  # Extracts all files into the current directory
-        print(f"Model extracted to {MODEL_FILE_PATH}")
-        
-# Download and extract the model from GitHub
-download_and_extract_model()
-
-# Load the pre-trained kNN model
-knn = joblib.load(MODEL_FILE_PATH)
 
 # Function to fetch movie data from Neo4j
 def fetch_movie_data():
@@ -99,15 +65,27 @@ if "actors_x" in merged_data.columns or "actors_y" in merged_data.columns:
 # Normalize movie names to lowercase in the merged dataset
 merged_data['movie'] = merged_data['movie'].str.lower()
 
-# Combine features into a single matrix
-def combine_features(data):
-    vectorizer = CountVectorizer(tokenizer=lambda x: x.split(','))
-    genre_features = vectorizer.fit_transform(data['genres'].fillna(""))
-    director_features = vectorizer.fit_transform(data['directors'].fillna(""))
-    actor_features = vectorizer.fit_transform(data['actors'].fillna(""))
-    return np.hstack([genre_features.toarray(), director_features.toarray(), actor_features.toarray()])
+# Vectorize the genres, directors, and actors columns
+vectorizer = CountVectorizer(tokenizer=lambda x: x.split(','))
 
-combined_features = combine_features(merged_data)
+# Vectorize the features
+genre_features = vectorizer.fit_transform(merged_data['genres'].fillna(""))
+director_features = vectorizer.fit_transform(merged_data['directors'].fillna(""))
+actor_features = vectorizer.fit_transform(merged_data['actors'].fillna(""))
+
+# Combine features into a single matrix
+combined_features = np.hstack([
+    genre_features.toarray(),
+    director_features.toarray(),
+    actor_features.toarray()
+])
+
+# Train a kNN model for recommendations
+knn = NearestNeighbors(n_neighbors=5, metric='cosine')
+knn.fit(combined_features)
+
+# Save the trained kNN model
+joblib.dump(knn, "knn_movie_recommender.pkl")
 
 # Function to recommend movies
 def recommend_movies(movie_name):
