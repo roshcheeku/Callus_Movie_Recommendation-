@@ -1,4 +1,6 @@
 streamlit
 neo4j
-joblib
+pandas
 scikit-learn
+numpy
+joblib
