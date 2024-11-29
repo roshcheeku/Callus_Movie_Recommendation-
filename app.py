@@ -1,161 +1,122 @@
 import streamlit as st
-import random
+from neo4j import GraphDatabase
+import pandas as pd
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.neighbors import NearestNeighbors
+import numpy as np
+import joblib
 
-def apply_custom_styles():
-    st.markdown("""
-        <style>
-            .stApp {
-                background-image: url('https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&q=80');
-                background-size: cover;
-                background-position: center;
-                background-attachment: fixed;
-            }
-            
-            .stApp::before {
-                content: "";
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(0, 0, 0, 0.85);
-                z-index: -1;
-            }
-            
-            .stTextInput > div > div > input {
-                background-color: rgba(41, 41, 41, 0.7) !important;
-                color: white !important;
-                border: 1px solid #404040 !important;
-                padding: 1rem !important;
-                font-size: 1.1rem !important;
-                border-radius: 8px !important;
-            }
-            
-            .stTextInput > div > div > input:focus {
-                border-color: #9F7AEA !important;
-                box-shadow: 0 0 0 1px #9F7AEA !important;
-            }
-            
-            .movie-card {
-                background-color: rgba(41, 41, 41, 0.7);
-                padding: 1.5rem;
-                border-radius: 10px;
-                border: 1px solid #404040;
-                margin-bottom: 1rem;
-                transition: transform 0.2s;
-            }
-            
-            .movie-card:hover {
-                transform: translateY(-5px);
-                border-color: #9F7AEA;
-            }
-            
-            h1, h2, h3, p {
-                color: white !important;
-            }
-            
-            .stSpinner > div {
-                border-color: #9F7AEA !important;
-            }
-            
-            .stAlert {
-                background-color: rgba(41, 41, 41, 0.7) !important;
-                border: 1px solid #404040 !important;
-            }
-        </style>
-    """, unsafe_allow_html=True)
+# Neo4j database connection details
+uri = "bolt://localhost:7687"
+username = "neo4j"
+password = "ROSH15VEDA"
+driver = GraphDatabase.driver(uri, auth=(username, password))
 
-def mock_get_recommendations(movie_name):
-    # Simulated delay
-    import time
-    time.sleep(1)
-    
-    # Mock movie database
-    movie_database = {
-        "inception": ["The Matrix", "Interstellar", "Blade Runner 2049", "Source Code", "Tenet"],
-        "the godfather": ["Goodfellas", "Casino", "Scarface", "The Departed", "Once Upon a Time in America"],
-        "pulp fiction": ["Reservoir Dogs", "Kill Bill", "Django Unchained", "The Big Lebowski", "Snatch"],
-        "titanic": ["The Notebook", "Pearl Harbor", "Romeo + Juliet", "Gone with the Wind", "Casablanca"]
-    }
-    
-    # Return recommendations if movie exists, otherwise return random selection
-    return movie_database.get(movie_name.lower(), random.sample([
-        "The Shawshank Redemption", "Fight Club", "The Dark Knight",
-        "Forrest Gump", "The Matrix", "Inception", "Pulp Fiction",
-        "The Godfather", "Interstellar", "The Silence of the Lambs"
-    ], 5))
+# Function to fetch movie data from Neo4j
+def fetch_movie_data():
+    query = """
+    MATCH (m:Movie)-[:HAS_GENRE]->(g:Genre)
+    OPTIONAL MATCH (m)-[:DIRECTED]->(d:Director)
+    OPTIONAL MATCH (m)-[:ACTED_IN]->(a:Actor)
+    RETURN m.name AS movie, 
+           COLLECT(DISTINCT g.name) AS genres,
+           COLLECT(DISTINCT d.name) AS directors,
+           COLLECT(DISTINCT a.name) AS actors;
+    """
+    with driver.session() as session:
+        result = session.run(query)
+        data = []
+        for record in result:
+            data.append({
+                "movie": record["movie"],
+                "genres": ",".join(record["genres"]),
+                "directors": ",".join(record["directors"]),
+                "actors": ",".join(record["actors"])
+            })
+    return pd.DataFrame(data)
 
+# Fetch movie data
+print("Fetching data from Neo4j...")
+neo4j_data = fetch_movie_data()
+print("Neo4j Data:\n", neo4j_data.head())
+
+# Load additional CSV dataset
+print("Loading CSV data...")
+csv_data = pd.read_csv("cleaned_extracted_movie_genres.csv")
+csv_data.rename(columns={"movie_name": "movie"}, inplace=True)
+print("CSV Data:\n", csv_data.head())
+
+# Merge the datasets on 'movie'
+print("Merging datasets...")
+merged_data = pd.merge(csv_data, neo4j_data, on="movie", how="inner")
+print("Merged Data:\n", merged_data.head())
+
+# Handle duplicate columns for genres
+if "genres_x" in merged_data.columns and "genres_y" in merged_data.columns:
+    merged_data["genres"] = merged_data["genres_x"]
+    merged_data.drop(columns=["genres_x", "genres_y"], inplace=True)
+
+# Ensure 'actors' column exists
+if "actors_x" in merged_data.columns or "actors_y" in merged_data.columns:
+    if "actors" not in merged_data.columns:
+        merged_data["actors"] = merged_data.get("actors_x", merged_data.get("actors_y"))
+    merged_data.drop(columns=["actors_x", "actors_y"], inplace=True, errors="ignore")
+
+# Normalize movie names to lowercase in the merged dataset
+merged_data['movie'] = merged_data['movie'].str.lower()
+
+# Vectorize the genres, directors, and actors columns
+vectorizer = CountVectorizer(tokenizer=lambda x: x.split(','))
+
+# Vectorize the features
+genre_features = vectorizer.fit_transform(merged_data['genres'].fillna(""))
+director_features = vectorizer.fit_transform(merged_data['directors'].fillna(""))
+actor_features = vectorizer.fit_transform(merged_data['actors'].fillna(""))
+
+# Combine features into a single matrix
+combined_features = np.hstack([
+    genre_features.toarray(),
+    director_features.toarray(),
+    actor_features.toarray()
+])
+
+# Train a kNN model for recommendations
+knn = NearestNeighbors(n_neighbors=5, metric='cosine')
+knn.fit(combined_features)
+
+# Save the trained kNN model
+joblib.dump(knn, "knn_movie_recommender.pkl")
+
+# Function to recommend movies
+def recommend_movies(movie_name):
+    try:
+        # Normalize input to lowercase
+        movie_name = movie_name.lower()
+        
+        # Find movie index
+        movie_idx = merged_data[merged_data['movie'] == movie_name].index[0]
+        movie_vec = combined_features[movie_idx].reshape(1, -1)
+        distances, indices = knn.kneighbors(movie_vec, n_neighbors=5)
+        recommendations = merged_data.iloc[indices[0]]['movie'].tolist()
+        return recommendations
+    except IndexError:
+        return ["Movie not found in the dataset!"]
+
+# Streamlit UI
 def main():
-    st.set_page_config(
-        page_title="Movie Recommender",
-        page_icon="🎬",
-        layout="wide"
-    )
-    
-    apply_custom_styles()
-    
-    # Header
-    st.markdown("""
-        <div style='text-align: center; padding: 2rem 0;'>
-            <h1 style='font-size: 3.5rem; margin-bottom: 1rem; font-weight: bold;'>
-                🎬 Movie Recommendations
-            </h1>
-            <p style='font-size: 1.2rem; color: #B8B8B8; max-width: 600px; margin: 0 auto;'>
-                Discover new movies based on your favorites. Enter a movie title and we'll find similar films you might enjoy.
-            </p>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Search Section
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        movie_name = st.text_input(
-            "",
-            placeholder="Enter a movie name...",
-            key="movie_search"
-        )
-    
-    # Handle Search
+    st.title("Movie Recommendation System")
+    st.write("This is a movie recommendation system based on genres, directors, and actors.")
+
+    movie_name = st.text_input("Enter a movie name for recommendations:")
+
     if movie_name:
-        with st.spinner('Finding recommendations...'):
-            try:
-                recommendations = mock_get_recommendations(movie_name)
-                
-                # Display recommendations
-                st.markdown("""
-                    <h2 style='text-align: center; margin: 2rem 0; font-size: 1.8rem;'>
-                        Recommended Movies
-                    </h2>
-                """, unsafe_allow_html=True)
-                
-                # Create grid layout
-                cols = st.columns(3)
-                for idx, (movie, col) in enumerate(zip(recommendations, cols * ((len(recommendations) + 2) // 3))):
-                    with col:
-                        st.markdown(f"""
-                            <div class='movie-card'>
-                                <p style='color: #9F7AEA !important; margin-bottom: 0.5rem; font-size: 0.9rem;'>
-                                    Recommendation #{idx + 1}
-                                </p>
-                                <h3 style='margin: 0; font-size: 1.2rem;'>{movie}</h3>
-                            </div>
-                        """, unsafe_allow_html=True)
-                        
-            except Exception as e:
-                st.error("An error occurred while fetching recommendations. Please try again.")
-    
-    # Initial state message
-    if not movie_name:
-        st.markdown("""
-            <div style='text-align: center; margin-top: 2rem; padding: 2rem;
-                        background-color: rgba(41, 41, 41, 0.7); border-radius: 10px;
-                        border: 1px solid #404040; max-width: 600px; margin-left: auto;
-                        margin-right: auto;'>
-                <p style='color: #B8B8B8 !important; margin: 0;'>
-                    Enter a movie title above to get personalized recommendations
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
+        recommendations = recommend_movies(movie_name)
+        if isinstance(recommendations, list):
+            st.write(f"Recommended movies for '{movie_name}':")
+            for idx, rec in enumerate(recommendations, 1):
+                st.write(f"{idx}. {rec}")
+        else:
+            st.write(recommendations)
 
 if __name__ == "__main__":
     main()
