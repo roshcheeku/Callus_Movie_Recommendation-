@@ -93,6 +93,10 @@ def recommend_movies(movie_name):
         # Normalize input to lowercase
         movie_name = movie_name.lower()
         
+        # Check if the movie exists in the dataset
+        if movie_name not in merged_data['movie'].values:
+            return ["Movie not found in the dataset!"]
+        
         # Find movie index
         movie_idx = merged_data[merged_data['movie'] == movie_name].index[0]
         movie_vec = combined_features[movie_idx].reshape(1, -1)
@@ -100,7 +104,7 @@ def recommend_movies(movie_name):
         recommendations = merged_data.iloc[indices[0]]['movie'].tolist()
         return recommendations
     except IndexError:
-        return ["Movie not found in the dataset!"]
+        return ["An error occurred while fetching recommendations."]
 
 # Streamlit UI
 def main():
