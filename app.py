@@ -7,9 +7,9 @@ import numpy as np
 import joblib
 
 # Neo4j database connection details
-uri = "bolt://localhost:7687"
+uri = "neo4j+s://01405b8f.databases.neo4j.io"
 username = "neo4j"
-password = "ROSH15VEDA"
+password = "3r0cFPqEYqgLVfaaEqv2-o9VIyiS_LZXgFAZNaew2BQ"
 driver = GraphDatabase.driver(uri, auth=(username, password))
 
 # Function to fetch movie data from Neo4j
