@@ -18,10 +18,10 @@ def fetch_movie_data():
     MATCH (m:Movie)-[:HAS_GENRE]->(g:Genre)
     OPTIONAL MATCH (m)-[:DIRECTED]->(d:Director)
     OPTIONAL MATCH (m)-[:ACTED_IN]->(a:Actor)
-    WITH m, COLLECT(DISTINCT g.name) AS genres, COLLECT(DISTINCT d.name) AS directors, COLLECT(DISTINCT a.name) AS actors
-    WHERE size(genres) > 0 AND size(directors) > 0 AND size(actors) > 0
-    RETURN m.name AS movie, genres, directors, actors;
-
+    RETURN m.name AS movie, 
+           COLLECT(DISTINCT g.name) AS genres,
+           COLLECT(DISTINCT d.name) AS directors,
+           COLLECT(DISTINCT a.name) AS actors;
     """
     with driver.session() as session:
         result = session.run(query)
@@ -29,9 +29,9 @@ def fetch_movie_data():
         for record in result:
             data.append({
                 "movie": record["movie"],
-                "genres": ",".join(record["genres"]),
-                "directors": ",".join(record["directors"]),
-                "actors": ",".join(record["actors"])
+                "genres": ",".join(record["genres"]) if record["genres"] else "",
+                "directors": ",".join(record["directors"]) if record["directors"] else "",
+                "actors": ",".join(record["actors"]) if record["actors"] else ""
             })
     return pd.DataFrame(data)
 
