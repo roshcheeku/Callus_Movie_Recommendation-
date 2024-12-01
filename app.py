@@ -35,21 +35,23 @@ def fetch_movie_data():
             })
     return pd.DataFrame(data)
 
-# Fetch movie data
+# Fetch movie data without displaying it directly
 st.write("Fetching data from Neo4j...")
-neo4j_data = fetch_movie_data()
-st.write("Neo4j Data:", neo4j_data.head())
+
+try:
+    neo4j_data = fetch_movie_data()
+except Exception as e:
+    st.error("Failed to fetch data from the database. Please try again later.")
+    st.stop()
 
 # Load additional CSV dataset
 st.write("Loading CSV data...")
 csv_data = pd.read_csv("cleaned_extracted_movie_genres.csv")
 csv_data.rename(columns={"movie_name": "movie"}, inplace=True)
-st.write("CSV Data:", csv_data.head())
 
 # Merge the datasets on 'movie'
 st.write("Merging datasets...")
 merged_data = pd.merge(csv_data, neo4j_data, on="movie", how="inner")
-st.write("Merged Data:", merged_data.head())
 
 # Normalize movie names to lowercase
 merged_data['movie'] = merged_data['movie'].str.lower()
