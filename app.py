@@ -38,18 +38,18 @@ def fetch_movie_data():
 # Fetch movie data
 st.write("Fetching data from Neo4j...")
 neo4j_data = fetch_movie_data()
-st.write("Neo4j Data:\n", neo4j_data.head())
+st.write("Neo4j Data Sample:", neo4j_data.head())
 
 # Load additional CSV dataset
 st.write("Loading CSV data...")
 csv_data = pd.read_csv("cleaned_extracted_movie_genres.csv")
 csv_data.rename(columns={"movie_name": "movie"}, inplace=True)
-st.write("CSV Data:\n", csv_data.head())
+st.write("CSV Data Sample:", csv_data.head())
 
 # Merge the datasets on 'movie'
 st.write("Merging datasets...")
 merged_data = pd.merge(csv_data, neo4j_data, on="movie", how="inner")
-st.write("Merged Data:\n", merged_data.head())
+st.write("Merged Data Sample:", merged_data.head())
 
 # Handle duplicate columns for genres
 if "genres_x" in merged_data.columns and "genres_y" in merged_data.columns:
@@ -58,12 +58,11 @@ if "genres_x" in merged_data.columns and "genres_y" in merged_data.columns:
 
 # Ensure 'actors' column exists
 if "actors_x" in merged_data.columns or "actors_y" in merged_data.columns:
-    if "actors" not in merged_data.columns:
-        merged_data["actors"] = merged_data.get("actors_x", merged_data.get("actors_y"))
+    merged_data["actors"] = merged_data.get("actors_x", merged_data.get("actors_y"))
     merged_data.drop(columns=["actors_x", "actors_y"], inplace=True, errors="ignore")
 
 # Normalize movie names to lowercase in the merged dataset
-merged_data['movie'] = merged_data['movie'].str.lower()
+merged_data['movie'] = merged_data['movie'].str.strip().str.lower()
 
 # Vectorize the genres, directors, and actors columns
 vectorizer = CountVectorizer(tokenizer=lambda x: x.split(','))
@@ -91,22 +90,30 @@ joblib.dump(knn, "knn_movie_recommender.pkl")
 def recommend_movies(movie_name):
     try:
         st.write(f"Searching for '{movie_name}'...")
-        # Normalize input to lowercase
-        movie_name = movie_name.lower()
+        
+        # Normalize input to lowercase and strip whitespace
+        movie_name = movie_name.strip().lower()
+        
+        # Check if movie exists in the dataset
+        if movie_name not in merged_data['movie'].values:
+            st.write(f"Movie '{movie_name}' not found in the dataset.")
+            return ["Movie not found in the dataset!"]
         
         # Find movie index
         movie_idx = merged_data[merged_data['movie'] == movie_name].index[0]
         st.write(f"Movie found: {merged_data.iloc[movie_idx]['movie']}")
         
+        # Get feature vector for the input movie
         movie_vec = combined_features[movie_idx].reshape(1, -1)
         distances, indices = knn.kneighbors(movie_vec, n_neighbors=5)
         
+        # Generate recommendations
         recommendations = merged_data.iloc[indices[0]]['movie'].tolist()
         st.write(f"Recommendations: {recommendations}")
         return recommendations
-    except IndexError as e:
+    except Exception as e:
         st.write(f"Error: {e}")
-        return ["Movie not found in the dataset!"]
+        return ["An error occurred during recommendations!"]
 
 # Streamlit UI
 def main():
