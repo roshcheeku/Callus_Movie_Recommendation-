@@ -36,20 +36,20 @@ def fetch_movie_data():
     return pd.DataFrame(data)
 
 # Fetch movie data
-print("Fetching data from Neo4j...")
+st.write("Fetching data from Neo4j...")
 neo4j_data = fetch_movie_data()
-print("Neo4j Data:\n", neo4j_data.head())
+st.write("Neo4j Data Fetched:", neo4j_data.head())
 
 # Load additional CSV dataset
-print("Loading CSV data...")
+st.write("Loading CSV data...")
 csv_data = pd.read_csv("cleaned_extracted_movie_genres.csv")
 csv_data.rename(columns={"movie_name": "movie"}, inplace=True)
-print("CSV Data:\n", csv_data.head())
+st.write("CSV Data Loaded:", csv_data.head())
 
 # Merge the datasets on 'movie'
-print("Merging datasets...")
+st.write("Merging datasets...")
 merged_data = pd.merge(csv_data, neo4j_data, on="movie", how="inner")
-print("Merged Data:\n", merged_data.head())
+st.write("Merged Data:", merged_data.head())
 
 # Handle duplicate columns for genres
 if "genres_x" in merged_data.columns and "genres_y" in merged_data.columns:
@@ -105,6 +105,8 @@ def recommend_movies(movie_name):
         return recommendations
     except IndexError:
         return ["An error occurred while fetching recommendations."]
+    except Exception as e:
+        return [f"An error occurred: {str(e)}"]
 
 # Streamlit UI
 def main():
