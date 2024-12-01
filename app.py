@@ -36,20 +36,20 @@ def fetch_movie_data():
     return pd.DataFrame(data)
 
 # Fetch movie data
-st.write("Fetching data from Neo4j...")
+print("Fetching data from Neo4j...")
 neo4j_data = fetch_movie_data()
-st.write("Neo4j Data Fetched:", neo4j_data.head())
+print("Neo4j Data:\n", neo4j_data.head())
 
 # Load additional CSV dataset
-st.write("Loading CSV data...")
+print("Loading CSV data...")
 csv_data = pd.read_csv("cleaned_extracted_movie_genres.csv")
 csv_data.rename(columns={"movie_name": "movie"}, inplace=True)
-st.write("CSV Data Loaded:", csv_data.head())
+print("CSV Data:\n", csv_data.head())
 
 # Merge the datasets on 'movie'
-st.write("Merging datasets...")
+print("Merging datasets...")
 merged_data = pd.merge(csv_data, neo4j_data, on="movie", how="inner")
-st.write("Merged Data:", merged_data.head())
+print("Merged Data:\n", merged_data.head())
 
 # Handle duplicate columns for genres
 if "genres_x" in merged_data.columns and "genres_y" in merged_data.columns:
@@ -93,10 +93,6 @@ def recommend_movies(movie_name):
         # Normalize input to lowercase
         movie_name = movie_name.lower()
         
-        # Check if the movie exists in the dataset
-        if movie_name not in merged_data['movie'].values:
-            return ["Movie not found in the dataset!"]
-        
         # Find movie index
         movie_idx = merged_data[merged_data['movie'] == movie_name].index[0]
         movie_vec = combined_features[movie_idx].reshape(1, -1)
@@ -104,9 +100,7 @@ def recommend_movies(movie_name):
         recommendations = merged_data.iloc[indices[0]]['movie'].tolist()
         return recommendations
     except IndexError:
-        return ["An error occurred while fetching recommendations."]
-    except Exception as e:
-        return [f"An error occurred: {str(e)}"]
+        return ["Movie not found in the dataset!"]
 
 # Streamlit UI
 def main():
