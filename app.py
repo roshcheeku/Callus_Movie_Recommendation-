@@ -29,40 +29,49 @@ def fetch_movie_data():
         for record in result:
             data.append({
                 "movie": record["movie"],
-                "genres": ",".join(record["genres"]) if record["genres"] else "None",
-                "directors": ",".join(record["directors"]) if record["directors"] else "None",
-                "actors": ",".join(record["actors"]) if record["actors"] else "None"
+                "genres": ",".join(record["genres"]),
+                "directors": ",".join(record["directors"]),
+                "actors": ",".join(record["actors"])
             })
     return pd.DataFrame(data)
 
-# Fetch movie data without displaying it directly
-st.write("Fetching data from Neo4j...")
-
-try:
-    neo4j_data = fetch_movie_data()
-except Exception as e:
-    st.error("Failed to fetch data from the database. Please try again later.")
-    st.stop()
+# Fetch movie data
+print("Fetching data from Neo4j...")
+neo4j_data = fetch_movie_data()
+print("Neo4j Data:\n", neo4j_data.head())
 
 # Load additional CSV dataset
-st.write("Loading CSV data...")
+print("Loading CSV data...")
 csv_data = pd.read_csv("cleaned_extracted_movie_genres.csv")
 csv_data.rename(columns={"movie_name": "movie"}, inplace=True)
+print("CSV Data:\n", csv_data.head())
 
 # Merge the datasets on 'movie'
-st.write("Merging datasets...")
+print("Merging datasets...")
 merged_data = pd.merge(csv_data, neo4j_data, on="movie", how="inner")
+print("Merged Data:\n", merged_data.head())
 
-# Normalize movie names to lowercase
+# Handle duplicate columns for genres
+if "genres_x" in merged_data.columns and "genres_y" in merged_data.columns:
+    merged_data["genres"] = merged_data["genres_x"]
+    merged_data.drop(columns=["genres_x", "genres_y"], inplace=True)
+
+# Ensure 'actors' column exists
+if "actors_x" in merged_data.columns or "actors_y" in merged_data.columns:
+    if "actors" not in merged_data.columns:
+        merged_data["actors"] = merged_data.get("actors_x", merged_data.get("actors_y"))
+    merged_data.drop(columns=["actors_x", "actors_y"], inplace=True, errors="ignore")
+
+# Normalize movie names to lowercase in the merged dataset
 merged_data['movie'] = merged_data['movie'].str.lower()
 
 # Vectorize the genres, directors, and actors columns
 vectorizer = CountVectorizer(tokenizer=lambda x: x.split(','))
 
 # Vectorize the features
-genre_features = vectorizer.fit_transform(merged_data['genres'].fillna("None"))
-director_features = vectorizer.fit_transform(merged_data['directors'].fillna("None"))
-actor_features = vectorizer.fit_transform(merged_data['actors'].fillna("None"))
+genre_features = vectorizer.fit_transform(merged_data['genres'].fillna(""))
+director_features = vectorizer.fit_transform(merged_data['directors'].fillna(""))
+actor_features = vectorizer.fit_transform(merged_data['actors'].fillna(""))
 
 # Combine features into a single matrix
 combined_features = np.hstack([
